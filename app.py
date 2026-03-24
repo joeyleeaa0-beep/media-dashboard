@@ -224,7 +224,10 @@ with tab2:
     city_df = df_media[df_media["地区"].astype(str) == city]
     if "渠道|平台" in city_df.columns:
         city_df = city_df[city_df["渠道|平台"].astype(str).str.contains("合计")] 
-        if "地区" in df_media.columns else pd.DataFrame()
+        if "地区" in df_media.columns:
+    city_df = df_media[df_media["地区"].astype(str) == city]
+else:
+    city_df = pd.DataFrame()
         if sel_month != "全部月份" and "月份" in city_df.columns:
             city_df = city_df[city_df["月份"].astype(str) == sel_month]
         spend = to_num(city_df["投放金额"]).sum() if "投放金额" in city_df.columns else 0
