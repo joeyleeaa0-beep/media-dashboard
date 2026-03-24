@@ -221,12 +221,12 @@ with tab2:
     st.subheader("分城市经营对比")
     city_data = [] 
     for city in CITY_TABLES.keys():
-    city_df = df_media[df_media["地区"].astype(str) == city]
-    if "渠道|平台" in city_df.columns:
-        city_df = city_df[city_df["渠道|平台"].astype(str).str.contains("合计")] 
-        if "地区" in df_media.columns:
-    city_df = df_media[df_media["地区"].astype(str) == city]
-else:
+    for city in CITY_TABLES.keys():
+            city_df = df_media[df_media["地区"].astype(str) == city]
+            if "渠道|平台" in city_df.columns:
+                city_df = city_df[city_df["渠道|平台"].astype(str).str.contains("合计")]
+            if sel_month != "全部月份" and "月份" in city_df.columns:
+                city_df = city_df[city_df["月份"].astype(str) == sel_month]
     city_df = pd.DataFrame()
         if sel_month != "全部月份" and "月份" in city_df.columns:
             city_df = city_df[city_df["月份"].astype(str) == sel_month]
