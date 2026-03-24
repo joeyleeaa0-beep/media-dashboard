@@ -219,8 +219,8 @@ with tab1:
 
 with tab2:
     st.subheader("分城市经营对比")
-    city_data = []
-      for city in CITY_TABLES.keys():
+    city_data = [] 
+    for city in CITY_TABLES.keys():
     city_df = df_media[df_media["地区"].astype(str) == city]
     if "渠道|平台" in city_df.columns:
         city_df = city_df[city_df["渠道|平台"].astype(str).str.contains("合计")] 
