@@ -86,13 +86,13 @@ def get_city_metrics(city, month):
     xiaoshou = 0
     shougou = 0
 
+    if month == "全部月份":
+        months_list = MONTHS
+    else:
+        months_list = [month]
+
     for _, row in cdf.iterrows():
         cat = str(row.get("线索分类|月份（1）", ""))
-        if month == "全部月份":
-            months_list = MONTHS
-        else:
-            months_list = [month]
-
         for m in months_list:
             sale_col = make_col(m, "销售")
             buy_col = make_col(m, "收购")
@@ -101,10 +101,10 @@ def get_city_metrics(city, month):
 
             if "总到店量" in cat:
                 daodian += val_sale + val_buy
-                xiaoshou += val_sale
-                shougou += val_buy
             if "总成交量" in cat:
                 chengjiao += val_sale + val_buy
+                xiaoshou += val_sale
+                shougou += val_buy
 
     return daodian, chengjiao, xiaoshou, shougou
 
