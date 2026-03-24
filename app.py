@@ -203,6 +203,8 @@ st.divider()
 tab1, tab2, tab3, tab4 = st.tabs(["📊 大盘数据", "🏙️ 分城市数据", "📈 大盘趋势", "🏙️ 各城市趋势"])
 
 with tab1:
+    st.write("深圳线索表字段名：", list(city_dfs["深圳"].columns.tolist()))
+st.write("深圳线索表数据：", city_dfs["深圳"])
     st.subheader("渠道投放明细")
     if not df.empty:
         cols_show = [c for c in ["地区", "月份", "渠道|平台", "投放金额"] if c in df.columns]
