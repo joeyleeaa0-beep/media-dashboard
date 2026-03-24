@@ -5,22 +5,6 @@ import plotly.express as px
 
 st.set_page_config(page_title="新媒体数据看板", page_icon="📊", layout="wide")
 
-# ── 样式 ──
-st.markdown("""
-<style>
-.metric-card {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    margin: 8px 0;
-}
-.metric-label { color: #666; font-size: 14px; margin-bottom: 8px; }
-.metric-value { color: #1a1a1a; font-size: 28px; font-weight: 700; }
-.metric-sub { color: #999; font-size: 12px; margin-top: 4px; }
-</style>
-""", unsafe_allow_html=True)
-
 APP_ID = st.secrets["FEISHU_APP_ID"]
 APP_SECRET = st.secrets["FEISHU_APP_SECRET"]
 
@@ -83,40 +67,12 @@ def fetch_table(app_token, table_id):
 def to_num(series):
     return pd.to_numeric(series, errors="coerce").fillna(0)
 
-# ── 加载数据 ──
-with st.spinner("正在加载数据..."):
-    df_media = fetch_table(APP_TOKEN_MEDIA, TABLE_MEDIA)
-    city_dfs = {}
-    for city, tid in CITY_TABLES.items():
-        city_dfs[city] = fetch_table(APP_TOKEN_MEDIA, tid)
-
-# ── 侧边栏筛选 ──
-st.sidebar.header("🔍 筛选条件")
-
-cities = ["全部城市"] + list(CITY_TABLES.keys())
-sel_city = st.sidebar.selectbox("筛选城市", cities)
-
-months_opts = ["全部月份"] + MONTHS
-sel_month = st.sidebar.selectbox("筛选月份", months_opts)
-
-# ── 处理投放数据 ──
-df = df_media.copy()
-if "地区" in df.columns and sel_city != "全部城市":
-    df = df[df["地区"].astype(str) == sel_city]
-# 只保留合计行
-if "渠道|平台" in df.columns:
-    df = df[df["渠道|平台"].astype(str).str.contains("合计")]
-if "月份" in df.columns and sel_month != "全部月份":
-    df = df[df["月份"].astype(str) == sel_month]
-
-total_spend = to_num(df["投放金额"]).sum() if "投放金额" in df.columns else 0
-total_keizi = to_num(df["客资量（以文员统计为..."]).sum() if "客资量（以文员统计为..." in df.columns else 0
-
-# 尝试不同的客资列名
-for col in df.columns:
-    if "客资" in col:
-        total_keizi = to_num(df[col]).sum()
-        break
+def make_col(m, type_):
+    num = m.replace("月", "").strip()
+    if len(num) == 2:
+        return f"{num}月：{type_}"
+    else:
+        return f"{num} 月：{type_}"
 
 def get_city_metrics(city, month):
     if city not in city_dfs:
@@ -125,14 +81,6 @@ def get_city_metrics(city, month):
     if cdf.empty:
         return 0, 0, 0, 0
 
-    # 构建正确的列名（飞书返回格式有空格和中文冒号）
-    def make_col(m, type_):
-        num = m.replace("月", "").strip()
-        if len(num) == 2:  # 10,11,12月没有空格
-            return f"{num}月：{type_}"
-        else:
-            return f"{num} 月：{type_}"
-
     daodian = 0
     chengjiao = 0
     xiaoshou = 0
@@ -140,18 +88,17 @@ def get_city_metrics(city, month):
 
     for _, row in cdf.iterrows():
         cat = str(row.get("线索分类|月份（1）", ""))
-        
         if month == "全部月份":
             months_list = MONTHS
         else:
             months_list = [month]
-        
+
         for m in months_list:
             sale_col = make_col(m, "销售")
             buy_col = make_col(m, "收购")
             val_sale = to_num(pd.Series([row.get(sale_col, 0)])).sum()
             val_buy = to_num(pd.Series([row.get(buy_col, 0)])).sum()
-            
+
             if "总到店量" in cat:
                 daodian += val_sale + val_buy
                 xiaoshou += val_sale
@@ -161,6 +108,37 @@ def get_city_metrics(city, month):
 
     return daodian, chengjiao, xiaoshou, shougou
 
+# ── 加载数据 ──
+with st.spinner("正在加载数据..."):
+    df_media = fetch_table(APP_TOKEN_MEDIA, TABLE_MEDIA)
+    city_dfs = {}
+    for city, tid in CITY_TABLES.items():
+        city_dfs[city] = fetch_table(APP_TOKEN_MEDIA, tid)
+
+# ── 侧边栏筛选 ──
+st.sidebar.header("🔍 筛选条件")
+cities = ["全部城市"] + list(CITY_TABLES.keys())
+sel_city = st.sidebar.selectbox("筛选城市", cities)
+months_opts = ["全部月份"] + MONTHS
+sel_month = st.sidebar.selectbox("筛选月份", months_opts)
+
+# ── 处理投放数据（只取合计行）──
+df = df_media.copy()
+if "渠道|平台" in df.columns:
+    df = df[df["渠道|平台"].astype(str).str.contains("合计")]
+if "地区" in df.columns and sel_city != "全部城市":
+    df = df[df["地区"].astype(str) == sel_city]
+if "月份" in df.columns and sel_month != "全部月份":
+    df = df[df["月份"].astype(str) == sel_month]
+
+total_spend = to_num(df["投放金额"]).sum() if "投放金额" in df.columns else 0
+total_keizi = 0
+for col in df.columns:
+    if "客资" in col:
+        total_keizi = to_num(df[col]).sum()
+        break
+
+# ── 处理线索数据 ──
 if sel_city == "全部城市":
     total_daodian = 0
     total_chengjiao = 0
@@ -175,14 +153,14 @@ if sel_city == "全部城市":
 else:
     total_daodian, total_chengjiao, total_xiaoshou, total_shougou = get_city_metrics(sel_city, sel_month)
 
-# 计算派生指标
+# ── 计算派生指标 ──
 daodian_rate = (total_daodian / total_keizi * 100) if total_keizi > 0 else 0
 chengjiao_rate = (total_chengjiao / total_keizi * 100) if total_keizi > 0 else 0
 keizi_cost = (total_spend / total_keizi) if total_keizi > 0 else 0
 daodian_cost = (total_spend / total_daodian) if total_daodian > 0 else 0
 chengjiao_cost = (total_spend / total_chengjiao) if total_chengjiao > 0 else 0
 
-# ── 核心指标卡片 ──
+# ── 核心指标 ──
 st.title("📊 新媒体数据看板")
 st.caption(f"城市：{sel_city} ｜ 月份：{sel_month}")
 
@@ -202,32 +180,33 @@ col10.metric("成交成本", f"¥{chengjiao_cost:.2f}", help="投放金额 / 成
 
 st.divider()
 
-# ── Tab 切换 ──
+# ── Tab ──
 tab1, tab2, tab3, tab4 = st.tabs(["📊 大盘数据", "🏙️ 分城市数据", "📈 大盘趋势", "🏙️ 各城市趋势"])
 
 with tab1:
-    st.write("深圳线索表字段名：", list(city_dfs["深圳"].columns.tolist()))
-    st.write("深圳线索表数据：", city_dfs["深圳"])
     st.subheader("渠道投放明细")
-    if not df.empty:
-        cols_show = [c for c in ["地区", "月份", "渠道|平台", "投放金额"] if c in df.columns]
-        for col in df.columns:
+    if not df_media.empty:
+        df_show = df_media.copy()
+        if "渠道|平台" in df_show.columns:
+            df_show = df_show[df_show["渠道|平台"].astype(str).str.contains("合计")]
+        if sel_city != "全部城市" and "地区" in df_show.columns:
+            df_show = df_show[df_show["地区"].astype(str) == sel_city]
+        if sel_month != "全部月份" and "月份" in df_show.columns:
+            df_show = df_show[df_show["月份"].astype(str) == sel_month]
+        cols_show = [c for c in ["地区", "月份", "渠道|平台", "投放金额"] if c in df_show.columns]
+        for col in df_show.columns:
             if "客资" in col and col not in cols_show:
                 cols_show.append(col)
-        cols_show += [c for c in ["总成交量", "销售量", "收购量"] if c in df.columns]
-        st.dataframe(df[cols_show].dropna(axis=1, how='all'), use_container_width=True)
+        cols_show += [c for c in ["总成交量", "销售量", "收购量"] if c in df_show.columns]
+        st.dataframe(df_show[cols_show].dropna(axis=1, how='all'), use_container_width=True)
 
 with tab2:
     st.subheader("分城市经营对比")
-    city_data = [] 
+    city_data = []
     for city in CITY_TABLES.keys():
-    for city in CITY_TABLES.keys():
-            city_df = df_media[df_media["地区"].astype(str) == city]
-            if "渠道|平台" in city_df.columns:
-                city_df = city_df[city_df["渠道|平台"].astype(str).str.contains("合计")]
-            if sel_month != "全部月份" and "月份" in city_df.columns:
-                city_df = city_df[city_df["月份"].astype(str) == sel_month]
-    city_df = pd.DataFrame()
+        city_df = df_media[df_media["地区"].astype(str) == city].copy() if "地区" in df_media.columns else pd.DataFrame()
+        if "渠道|平台" in city_df.columns:
+            city_df = city_df[city_df["渠道|平台"].astype(str).str.contains("合计")]
         if sel_month != "全部月份" and "月份" in city_df.columns:
             city_df = city_df[city_df["月份"].astype(str) == sel_month]
         spend = to_num(city_df["投放金额"]).sum() if "投放金额" in city_df.columns else 0
@@ -250,12 +229,7 @@ with tab2:
         })
     st.dataframe(pd.DataFrame(city_data), use_container_width=True, hide_index=True)
 
-    # 城市对比图
     city_df_plot = pd.DataFrame(city_data)
-    city_df_plot["客资量"] = city_df_plot["客资量"].astype(int)
-    city_df_plot["总到店量"] = city_df_plot["总到店量"].astype(int)
-    city_df_plot["总成交量"] = city_df_plot["总成交量"].astype(int)
-
     ca, cb, cc = st.columns(3)
     with ca:
         fig = px.bar(city_df_plot, x="城市", y="客资量", title="各城市客资量", color="城市")
@@ -269,30 +243,39 @@ with tab2:
 
 with tab3:
     st.subheader("大盘月度趋势")
-    if "月份" in df_media.columns:
-        trend_df = df_media.copy()
-        if sel_city != "全部城市" and "地区" in trend_df.columns:
-            trend_df = trend_df[trend_df["地区"].astype(str) == sel_city]
-        keizi_col = next((c for c in trend_df.columns if "客资" in c), None)
-        if keizi_col:
-            month_trend = trend_df.groupby("月份").agg(
-                投放金额=("投放金额", lambda x: to_num(x).sum()),
-                客资量=(keizi_col, lambda x: to_num(x).sum()),
-            ).reset_index()
-            month_trend["月份"] = pd.Categorical(month_trend["月份"], categories=MONTHS, ordered=True)
-            month_trend = month_trend.sort_values("月份")
-            fig4 = px.line(month_trend, x="月份", y=["投放金额", "客资量"], title="月度投放与客资趋势", markers=True)
-            st.plotly_chart(fig4, use_container_width=True)
+    trend_df = df_media.copy()
+    if "渠道|平台" in trend_df.columns:
+        trend_df = trend_df[trend_df["渠道|平台"].astype(str).str.contains("合计")]
+    if sel_city != "全部城市" and "地区" in trend_df.columns:
+        trend_df = trend_df[trend_df["地区"].astype(str) == sel_city]
+    keizi_col = next((c for c in trend_df.columns if "客资" in c), None)
+    if "月份" in trend_df.columns and keizi_col:
+        month_trend = trend_df.groupby("月份").agg(
+            投放金额=("投放金额", lambda x: to_num(x).sum()),
+            客资量=(keizi_col, lambda x: to_num(x).sum()),
+        ).reset_index()
+        month_trend["月份"] = pd.Categorical(month_trend["月份"], categories=MONTHS, ordered=True)
+        month_trend = month_trend.sort_values("月份")
+        fig4 = px.line(month_trend, x="月份", y=["投放金额", "客资量"],
+                       title="月度投放与客资趋势", markers=True)
+        st.plotly_chart(fig4, use_container_width=True)
 
 with tab4:
     st.subheader("各城市月度趋势")
-    if "月份" in df_media.columns and "地区" in df_media.columns:
-        keizi_col = next((c for c in df_media.columns if "客资" in c), None)
-        if keizi_col:
-            city_trend = df_media.groupby(["地区", "月份"]).agg(
-                客资量=(keizi_col, lambda x: to_num(x).sum())
-            ).reset_index()
-            city_trend["月份"] = pd.Categorical(city_trend["月份"], categories=MONTHS, ordered=True)
-            city_trend = city_trend.sort_values("月份")
-            fig5 = px.line(city_trend, x="月份", y="客资量", color="地区", title="各城市月度客资趋势", markers=True)
-            st.plotly_chart(fig5, use_container_width=True)
+    trend_city = df_media.copy()
+    if "渠道|平台" in trend_city.columns:
+        trend_city = trend_city[trend_city["渠道|平台"].astype(str).str.contains("合计")]
+    keizi_col2 = next((c for c in trend_city.columns if "客资" in c), None)
+    if "月份" in trend_city.columns and "地区" in trend_city.columns and keizi_col2:
+        city_trend = trend_city.groupby(["地区", "月份"]).agg(
+            客资量=(keizi_col2, lambda x: to_num(x).sum()),
+            投放金额=("投放金额", lambda x: to_num(x).sum()),
+        ).reset_index()
+        city_trend["月份"] = pd.Categorical(city_trend["月份"], categories=MONTHS, ordered=True)
+        city_trend = city_trend.sort_values("月份")
+        fig5 = px.line(city_trend, x="月份", y="客资量", color="地区",
+                       title="各城市月度客资趋势", markers=True)
+        st.plotly_chart(fig5, use_container_width=True)
+        fig6 = px.line(city_trend, x="月份", y="投放金额", color="地区",
+                       title="各城市月度投放趋势", markers=True)
+        st.plotly_chart(fig6, use_container_width=True)
