@@ -115,47 +115,47 @@ for col in df.columns:
         total_keizi = to_num(df[col]).sum()
         break
 
-# ── 处理线索数据 ──
 def get_city_metrics(city, month):
     if city not in city_dfs:
         return 0, 0, 0, 0
     cdf = city_dfs[city]
     if cdf.empty:
         return 0, 0, 0, 0
-    
-    # 找到总到店量和总成交量行
+
+    # 构建正确的列名（飞书返回格式有空格和中文冒号）
+    def make_col(m, type_):
+        num = m.replace("月", "").strip()
+        if len(num) == 2:  # 10,11,12月没有空格
+            return f"{num}月：{type_}"
+        else:
+            return f"{num} 月：{type_}"
+
     daodian = 0
     chengjiao = 0
     xiaoshou = 0
     shougou = 0
-    
+
     for _, row in cdf.iterrows():
-        row_type = str(row.get("线索分类|月份", ""))
+        cat = str(row.get("线索分类|月份（1）", ""))
+        
         if month == "全部月份":
-            # 汇总所有月份
-            for m in MONTHS:
-                sale_col = f"{m}:销售"
-                buy_col = f"{m}:收购"
-                if "合计" in row_type and "总到店量" in str(row.get("线索分类|月份（1）", "")):
-                    daodian += to_num(pd.Series([row.get(sale_col, 0)])).sum()
-                    daodian += to_num(pd.Series([row.get(buy_col, 0)])).sum()
-                if "合计" in row_type and "总成交量" in str(row.get("线索分类|月份（1）", "")):
-                    chengjiao += to_num(pd.Series([row.get(sale_col, 0)])).sum()
-                    chengjiao += to_num(pd.Series([row.get(buy_col, 0)])).sum()
+            months_list = MONTHS
         else:
-            sale_col = f"{month}:销售"
-            buy_col = f"{month}:收购"
-            cat = str(row.get("线索分类|月份（1）", ""))
+            months_list = [month]
+        
+        for m in months_list:
+            sale_col = make_col(m, "销售")
+            buy_col = make_col(m, "收购")
             val_sale = to_num(pd.Series([row.get(sale_col, 0)])).sum()
             val_buy = to_num(pd.Series([row.get(buy_col, 0)])).sum()
+            
             if "总到店量" in cat:
-                daodian = val_sale + val_buy
+                daodian += val_sale + val_buy
+                xiaoshou += val_sale
+                shougou += val_buy
             if "总成交量" in cat:
-                chengjiao = val_sale + val_buy
-            if "总到店量" in cat:
-                xiaoshou = val_sale
-                shougou = val_buy
-    
+                chengjiao += val_sale + val_buy
+
     return daodian, chengjiao, xiaoshou, shougou
 
 if sel_city == "全部城市":
